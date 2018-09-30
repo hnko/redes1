@@ -17,7 +17,6 @@
 
 #define PROMISC 0
 #define TIMEOUT_LIMIT 100
-#define BCAPTURE 5
 
 #define SUM_SECS 1800 /*30 min in seconds */
 
@@ -29,7 +28,8 @@
 
 pcap_t *descr=NULL,*descr2=NULL;
 pcap_dumper_t *pdumper=NULL;
-int p_count=0, offline=0, snaplen=0;
+int p_count=0, offline=0;
+int snaplen=0;
 
 void handle(int nsignal){
 	printf("Control C pulsado\n");
@@ -53,7 +53,8 @@ void callback(char*usuario,  struct pcap_pkthdr* header,  uint8_t* body){
 			pcap_dump((uint8_t *)pdumper,header,body);
 		}
 	}
-	for(int i=0; i<snaplen && i <header->caplen; i++){
+	int i;
+	for( i=0; i<snaplen && i <header->caplen; i++){
 		printf("%02x ", body[i]);
 	}
 	printf("\n");
@@ -87,6 +88,7 @@ int main(int argc, char **argv){
 	}
 	/* get the number of bytes to capture from the input parameters */
 	snaplen = (atoi(argv[2]) > ETH_FRAME_MAX) ? ETH_FRAME_MAX : atoi(argv[2]);
+
 	/* signal ctrl+C */
 	if(signal(SIGINT,handle)==SIG_ERR){
 		printf("Error: Fallo al capturar la senal SIGINT.\n");
@@ -95,7 +97,7 @@ int main(int argc, char **argv){
 	offline = (argc == 4) ? 1 : 0;
 	/* check which option the user wants */
 	if(!offline){ /* capture in live */
-		if ((descr = pcap_open_live(device,BCAPTURE,PROMISC,TIMEOUT_LIMIT, errbuf)) == NULL){
+		if ((descr = pcap_open_live(device,snaplen,PROMISC,TIMEOUT_LIMIT, errbuf)) == NULL){
 			printf("Error: pcap_open_live(): %s, %s %d.\n",errbuf,__FILE__,__LINE__);
 			exit(ERROR);
 		}
@@ -103,7 +105,7 @@ int main(int argc, char **argv){
 		//Para volcado de traza
 		/* linktype and the max size packet we want to save */
 		
-		descr2=pcap_open_dead(DLT_EN10MB,snaplen*2);
+		descr2=pcap_open_dead(DLT_EN10MB,snaplen);
 		if (!descr2){
 			printf("Error al abrir el dump.\n");
 			pcap_close(descr);
