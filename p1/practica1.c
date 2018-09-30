@@ -54,7 +54,7 @@ void callback(char*usuario,  struct pcap_pkthdr* header,  uint8_t* body){
 		}
 	}
 	for(int i=0; i<snaplen && i <header->caplen; i++){
-		printf("%02x ", (*body)++);
+		printf("%02x ", body[i]);
 	}
 	printf("\n");
 }
@@ -103,7 +103,7 @@ int main(int argc, char **argv){
 		//Para volcado de traza
 		/* linktype and the max size packet we want to save */
 		
-		descr2=pcap_open_dead(DLT_EN10MB,snaplen);
+		descr2=pcap_open_dead(DLT_EN10MB,snaplen*2);
 		if (!descr2){
 			printf("Error al abrir el dump.\n");
 			pcap_close(descr);
