@@ -43,6 +43,7 @@ void handle(int nsignal){
 		pcap_dump_close(pdumper);
 
 	printf(RED "\n\n>>> The total of packets captured is: %d." RESET "\n", p_count);
+
 	exit(OK);
  }
   
@@ -64,10 +65,11 @@ void callback(uint8_t*usuario,  const struct pcap_pkthdr* header,  const uint8_t
 		printf("%02x ", body[i]);
 	}
 	printf("\n");
+
 }
 
 int main(int argc, char **argv){
-	int ret;
+	int ret, flag_free=0;
 	char errbuf[PCAP_ERRBUF_SIZE], *device;
 	char file_name[256];
 	u_char *user=NULL;
@@ -85,7 +87,6 @@ int main(int argc, char **argv){
 		printf("The number of bytes must be 1 or more.\n");
 		exit(ERROR);
 	}
-
 	/* check if we need to find a device or use eth0 */
 	if(strcmp(argv[1], "-f") == 0){
 		if((device = pcap_lookupdev(errbuf))==NULL){
@@ -93,6 +94,7 @@ int main(int argc, char **argv){
 			exit(EXIT_FAILURE);
 		}
 	}else{
+		flag_free = 1;
 		device = malloc(sizeof(char)*strlen("eth0")+1);
 		strcpy(device, "eth0");
 	}
@@ -137,9 +139,9 @@ int main(int argc, char **argv){
 		}
       	
   	}
-
-		//Apertura de interface
-
+  	if(flag_free){
+  		free(device);	
+  	}
 	//Se pasa el contador como argumento, pero sera mas comodo y mucho mas habitual usar variables globales
 	ret = pcap_loop (descr, INFINITE, callback, (uint8_t*)&user);
 	if(ret == -1){ 		//En caso de error
