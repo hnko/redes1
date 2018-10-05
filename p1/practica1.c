@@ -12,6 +12,8 @@
 #include <linux/tcp.h>
 #include <signal.h>
 #include <time.h>
+#include <math.h>
+
 #define ERROR 1
 #define OK 0
 
@@ -44,16 +46,20 @@ void handle(int nsignal){
 	exit(OK);
  }
   
-void callback(char*usuario,  struct pcap_pkthdr* header,  uint8_t* body){
+void callback(uint8_t*usuario,  const struct pcap_pkthdr* header,  const uint8_t* body){
+	struct pcap_pkthdr* header_aux;
+	header_aux = (struct pcap_pkthdr*) header;
 	p_count++;
-	header->ts.tv_sec += SUM_SECS;
+	header_aux->ts.tv_sec += SUM_SECS;
 	if(!offline){
-		printf("Packet %d captured at %s\n",p_count, ctime((const time_t*)&(header->ts.tv_sec)));
+		printf("Packet %d captured at %s\n",p_count, ctime((const time_t*)&(header_aux->ts.tv_sec)));
 		if(pdumper){
-			pcap_dump((uint8_t *)pdumper,header,body);
+	 		pcap_dump((uint8_t *)pdumper,header_aux,body);
 		}
 	}
 	uint8_t i;
+	to_print = fmin(to_print, header->caplen); /* for prevent SEGV*/
+
 	for( i=0; i<to_print; i++){
 		printf("%02x ", body[i]);
 	}
@@ -135,7 +141,7 @@ int main(int argc, char **argv){
 		//Apertura de interface
 
 	//Se pasa el contador como argumento, pero sera mas comodo y mucho mas habitual usar variables globales
-	ret = pcap_loop (descr, INFINITE, callback, user);
+	ret = pcap_loop (descr, INFINITE, callback, (uint8_t*)&user);
 	if(ret == -1){ 		//En caso de error
 		printf("Error al capturar un paquete %s, %s %d.\n",pcap_geterr(descr),__FILE__,__LINE__);
 		if(!offline){
