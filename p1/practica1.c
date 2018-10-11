@@ -59,7 +59,7 @@ void callback(uint8_t*usuario,  const struct pcap_pkthdr* header,  const uint8_t
 		}
 	}
 	uint8_t i;
-	to_print = fmin(to_print, header->caplen); /* for prevent SEGV*/
+	to_print = fmin(to_print, header->caplen); /* for prevent SIGSEGV */
 
 	for( i=0; i<to_print; i++){
 		printf("%02x ", body[i]);
@@ -116,8 +116,7 @@ int main(int argc, char **argv){
 
 		//Para volcado de traza
 		/* linktype and the max size packet we want to save */
-		
-		descr2=pcap_open_dead(DLT_EN10MB,to_print);
+		descr2=pcap_open_dead(DLT_EN10MB,ETH_FRAME_MAX);
 		if (!descr2){
 			printf("Error al abrir el dump.\n");
 			pcap_close(descr);
