@@ -141,7 +141,7 @@ int main(int argc, char **argv){
   	if(flag_free){
   		free(device);	
   	}
-	//Se pasa el contador como argumento, pero sera mas comodo y mucho mas habitual usar variables globales
+	//for the packet count we use a global variable
 	ret = pcap_loop (descr, INFINITE, callback, (uint8_t*)&user);
 	if(ret == -1){ 		//En caso de error
 		printf("Error al capturar un paquete %s, %s %d.\n",pcap_geterr(descr),__FILE__,__LINE__);
