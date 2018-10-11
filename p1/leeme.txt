@@ -1,0 +1,22 @@
+
+Practica 1 - Redes 1
+	
+	Autores: Nicolas Wolyniec y Cristina Soria
+	Grupo: 1362
+
+	Observaciones:
+		Para podes trabajar desde cualquier sitio sin necesidad de modificar manualmente la 			interfaz donde queremos capturar trafico, se hizo uso de la funcion pcap_lookupdev. Esta 			funcion coge la primera interfaz disponible que encuentra. Como en la practica se 			especifica que debe ser por eth0 hemos anadido un nuevo argumento ('-f' o '-nf') para que 			busque una interfaz ('-f') o utilice eth0 por defecto ('-nf').
+		Pasando valgrind tenemos un warning ya que no se termina de liberar la variable utilizada 			para guardar la interfaz. Hemos probando diferentes aproximaciones pero el warning se 			mantiene. Creemos que es producto del funcionamiento interno de la funcion pcap_lookudev.
+
+
+Requisitos:
+1. Normativa de entrega cumplida en su totalidad: REALIZADO
+2. Varias relecturas del enunciado. REALIZADO
+3. Contar paquetes de una traza. REALIZADO
+4. Se ha comprabado que el número de paquete que muestra nuestro programa coincide con el que indica Wireshark. REALIZADO
+5.Contar paquetes de la interfaz de red. REALIZADO
+6. Almacenar en una traza el tráfico capturado en vivo. REALIZADO
+7. Se ha comprabado que todos los bytes de la traza capturado coincide con lo que indica Wireshark en un conjunto diverso de paquetes. REALIZADO
+8. Modificar fecha correctamente: REALIZADO
+9. Imprimir los N primeros bytes de un paquete y validarlo con Wireshark (captura de pantalla). REALIZADO
+10. Cuestionario "Ejercicios de captura de tráfico". REALIZADO
