@@ -38,12 +38,24 @@
 #define BREAKLOOP -2
 #define NO_FILTER 0
 #define NO_LIMIT -1
+#define TCP 2
+#define UDP 3
+#define NO_IPV4 5
+#define NO_PRIMER_FRAG 6
+#define PROT_NO_CONOCIDO 7
 void analizar_paquete(u_char *user,const struct pcap_pkthdr *hdr, const uint8_t *pack);
 
 
 
 void handleSignal(int nsignal);
-int analizar_ethernet(const uint8_t *pack);
+int analizar_ethernet(const uint8_t *pack); 
+int analizar_ip(const uint8_t *pack, uint8_t *protocolo, uint8_t *ip_origen, uint8_t *ip_destino);
+void version_longitud(uint8_t *aux, uint8_t *version, uint8_t *longitud_cabecera);
+void posicion_ip(uint16_t * aux_pos, uint16_t *posicion);
+int comprobar_filtro(uint8_t *dir_origen, uint8_t *ip_origen);
+
+
+
 
 pcap_t *descr = NULL;
 uint64_t contador = 0;
@@ -213,12 +225,31 @@ int main(int argc, char **argv)
 
 void analizar_paquete(u_char *user,const struct pcap_pkthdr *hdr, const uint8_t *pack){
 	(void)user;
+	uint8_t protocolo = 0;
 	printf("Nuevo paquete capturado el %s\n", ctime((const time_t *) & (hdr->ts.tv_sec)));
 	contador++;
-	if(analizar_ethernet(pack) == OK){ /* es IPv4*/
-		printf("ES IPV4\n");
+	if(analizar_ethernet(pack) == OK){ /* es IP*/
+
+		pack += ETH_HLEN;
+		int salida_ip = analizar_ip(pack, &protocolo, ipsrc_filter, ipdst_filter);
+		if(salida_ip == NO_IPV4){
+			printf("No es un paquete Ipv4. Se termina su procesado.\n\n");
+		}
+		else if(salida_ip == NO_PRIMER_FRAG){
+			printf("El paquete IP leido no es el primer fragmento. Se termina su procesado.\n\n");
+		}
+		else if (salida_ip == ERROR){
+			printf("El protocolo no es TCP ni UDP. Se termina su procesado.\n\n");
+		}
+		else if(salida_ip == ERROR){
+			printf("Se termina su procesado.\n\n");
+		}
+		else{ /* es UDP o TCP */
+			pack += salida_ip;
+			printf("FUNICONA\n\n");
+		}
 	}else{
-		printf("NO ES IPV4\n");
+		printf("NO ES IP. No se sigue procesando el paquete.\n\n");
 	}
 	
 }
@@ -233,6 +264,8 @@ int analizar_ethernet(const uint8_t *pack){
 	int i = 0;
 
 	/* direccion destino */
+	printf("......................................................\n");
+	printf("Nivel 2:\n");
 	printf("Direccion ETH destino= ");
 	printf("%02X", pack[0]);
 
@@ -250,6 +283,7 @@ int analizar_ethernet(const uint8_t *pack){
 		printf("-%02X", pack[i]);
 	}
 	printf("\n");
+	printf("......................................................\n");
 
 	pack += ETH_ALEN; /* sumamos para ver el tipo de protocolo */
 	memcpy(&tipo_protocolo, pack, sizeof(uint16_t));
@@ -261,6 +295,118 @@ int analizar_ethernet(const uint8_t *pack){
 	return ERROR; /* no es ipv4 */
 }
 
-int analizar_ip(const uint8_t *pack){
+int analizar_ip(const uint8_t *pack, uint8_t *protocolo, uint8_t *ip_origen, uint8_t *ip_destino){
+	uint8_t version, aux, longitud_cabecera, tiempo_vida, dir_origen[IP_ALEN], dir_destino[IP_ALEN];
+	uint16_t aux_pos, posicion, longitud_total;
+	int i;
 
+	printf("------------------------------------------------------\n");
+	printf("Nivel 3:\n");
+	
+	memcpy(&aux, pack, sizeof(uint8_t));
+	pack += sizeof(uint8_t);
+	pack += sizeof(uint8_t); /* saltamos el campo 'tipo servicio' y nos posicionamos en long total */
+	memcpy(&longitud_total, pack, sizeof(uint16_t));
+	pack += sizeof(uint16_t);
+
+	longitud_total = ntohs(longitud_total);
+	version_longitud(&aux, &version, &longitud_cabecera);
+	printf("Version: %"PRIu8"\nLongitud de cabecera: %02x\nLongitud total: %"PRIu16"\n", version, longitud_cabecera, longitud_total);
+	if(version != 4){ /* no es ipv4 */
+		printf("------------------------------------------------------\n");
+		return NO_IPV4;
+	}
+
+	pack += sizeof(uint16_t); /* saltamos identificacion (estamos en flags)*/
+	
+	memcpy(&aux_pos, pack, sizeof(uint16_t));
+	posicion_ip(&aux_pos, &posicion);
+	pack += sizeof(uint16_t); /* saltamos flags-posicion*/
+	printf("Posicion: %"PRIu16"\n", posicion);
+	if(posicion != 0){
+		printf("------------------------------------------------------\n");
+		return NO_PRIMER_FRAG;
+	}
+	memcpy(&tiempo_vida, pack, sizeof(uint8_t)); /* tiempo de vida */
+	pack += sizeof(uint8_t);
+	printf("Tiempo de vida: %"PRIu8"\n", tiempo_vida);
+
+	/* copiamos el protocolo en el puntero pasado por argumento a la funcion */
+	memcpy(protocolo, pack, sizeof(uint8_t)); /* protocolo */
+	pack += sizeof(uint8_t);
+	printf("Protocolo: ");
+	if (*protocolo == 0x06){
+		printf("TCP\n");
+	}else if ((*protocolo) == 0x11){
+		printf("UDP\n");
+	}else{printf("No conocido.\n");
+		printf("------------------------------------------------------\n");
+		return PROT_NO_CONOCIDO;
+	}
+
+	pack += sizeof(uint16_t); /* saltamos  suma de control cabecera */
+
+	printf("Direcion origen: ");
+	for(i=0; i<IP_ALEN; i++){
+		memcpy(dir_origen+i, pack, sizeof(uint8_t));
+		pack += sizeof(uint8_t);
+		if(i != 3){
+			printf("%"PRIu8".", dir_origen[i]);
+		}else{
+			printf("%"PRIu8"\n", dir_origen[i]);
+		}
+	}
+	if(comprobar_filtro(dir_origen, ip_origen) == ERROR){
+		printf("El filtro de origen introducido no coincide.\n");
+		printf("------------------------------------------------------\n");
+		return ERROR;
+	}
+
+	printf("Direccion destino: ");
+	for(i=0; i<IP_ALEN; i++){
+		memcpy(dir_destino+i, pack, sizeof(uint8_t));
+		pack += sizeof(uint8_t);
+		if(i != 3){
+			printf("%"PRIu8".", dir_destino[i]);
+		}else{
+			printf("%"PRIu8"\n", dir_destino[i]);
+		}
+	}
+	if(comprobar_filtro(dir_destino, ip_destino) == ERROR){
+		printf("El filtro de destino introducido no coincide.\n");
+		printf("------------------------------------------------------\n");
+		return ERROR;
+	}
+
+
+	printf("------------------------------------------------------\n");
+	return longitud_cabecera*4;
+}
+
+void version_longitud(uint8_t *aux, uint8_t *version, uint8_t *longitud_cabecera){
+	/* aplicamos una mascara para conseguir los 4 primeros bit donde esta la version */
+	uint8_t aux2 = ((*aux) & 0xF0) >> 4;
+	memcpy(version, &aux2, sizeof(uint8_t));
+
+	/* mascara para conseguir los siguientes 4 bits - longitud cabecera */
+	aux2 = (*aux) & 0X0F;
+	memcpy(longitud_cabecera, &aux2, sizeof(uint8_t));
+}
+
+void posicion_ip(uint16_t * aux_pos, uint16_t *posicion){
+	/* mascara para no leer el valor que hay en flags (3 bits)*/
+	uint16_t aux2 = (*aux_pos) & 0x1FFF; 
+	aux2 = ntohs(aux2);
+	memcpy(posicion, &aux2, sizeof(uint16_t));
+
+}
+
+
+int comprobar_filtro(uint8_t *dir_origen, uint8_t *ip_origen){
+	for(int i=0; i<IP_ALEN; i++){
+		if(ip_origen[i] && ip_origen[i] != dir_origen[i]){
+			return ERROR;
+		}
+	}
+	return OK;
 }
