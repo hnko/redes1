@@ -43,19 +43,26 @@
 #define NO_IPV4 5
 #define NO_PRIMER_FRAG 6
 #define PROT_NO_CONOCIDO 7
+#define PROMISC 0
+#define TIMEOUT_LIMIT 100
+
 void analizar_paquete(u_char *user,const struct pcap_pkthdr *hdr, const uint8_t *pack);
-
-
-
 void handleSignal(int nsignal);
+
+/* nivel 2 */
 int analizar_ethernet(const uint8_t *pack); 
+
+/* nivel 3 */
 int analizar_ip(const uint8_t *pack, uint8_t *protocolo, uint8_t *ip_origen, uint8_t *ip_destino);
 void version_longitud(uint8_t *aux, uint8_t *version, uint8_t *longitud_cabecera);
 void posicion_ip(uint16_t * aux_pos, uint16_t *posicion);
 int comprobar_filtro(uint8_t *dir_origen, uint8_t *ip_origen);
 
-
-
+/* nivel 4 */
+int analizar_udp(const uint8_t *pack, const uint16_t *sport_filter, const uint16_t *dport_filter);
+int analizar_tcp(const uint8_t *pack, const uint16_t *sport_filter, const uint16_t *dport_filter);
+int comprobar_puerto(const uint16_t *po, const uint16_t *sp);
+void syn_fin(uint16_t *aux, uint16_t *syn, uint16_t *fin);
 
 pcap_t *descr = NULL;
 uint64_t contador = 0;
@@ -104,7 +111,6 @@ int main(int argc, char **argv)
 		{0, 0, 0, 0}
 	};
 
-	//Simple lectura por parametros por completar casos de error, ojo no cumple 100% los requisitos del enunciado!
 	while ((opt = getopt_long_only(argc, argv, "f:i:1:2:3:4:5", options, &long_index)) != -1) {
 		switch (opt) {
 		case 'i' :
@@ -113,14 +119,11 @@ int main(int argc, char **argv)
 				pcap_close(descr);
 				exit(ERROR);
 			}
-			printf("Descomente el código para leer y abrir de una interfaz\n");
-			exit(ERROR);
+			if((descr = pcap_open_live(optarg, ETH_FRAME_MAX, PROMISC,TIMEOUT_LIMIT, errbuf)) == NULL){
+				printf("Error: pcap_open_live(): %s, %s %d.\n",errbuf,__FILE__,__LINE__);
+				exit(ERROR);
+			}
 
-		
-			//if ( (descr = ??(optarg, ??, ??, ??, errbuf)) == NULL){
-			//	printf("Error: ??(): Interface: %s, %s %s %d.\n", optarg,errbuf,__FILE__,__LINE__);
-			//	exit(ERROR);
-			//}
 			break;
 
 		case 'f' :
@@ -226,12 +229,13 @@ int main(int argc, char **argv)
 void analizar_paquete(u_char *user,const struct pcap_pkthdr *hdr, const uint8_t *pack){
 	(void)user;
 	uint8_t protocolo = 0;
+	int salida_ip, salida_udp, salida_tcp;
 	printf("Nuevo paquete capturado el %s\n", ctime((const time_t *) & (hdr->ts.tv_sec)));
 	contador++;
 	if(analizar_ethernet(pack) == OK){ /* es IP*/
 
 		pack += ETH_HLEN;
-		int salida_ip = analizar_ip(pack, &protocolo, ipsrc_filter, ipdst_filter);
+		salida_ip = analizar_ip(pack, &protocolo, ipsrc_filter, ipdst_filter);
 		if(salida_ip == NO_IPV4){
 			printf("No es un paquete Ipv4. Se termina su procesado.\n\n");
 		}
@@ -246,7 +250,17 @@ void analizar_paquete(u_char *user,const struct pcap_pkthdr *hdr, const uint8_t 
 		}
 		else{ /* es UDP o TCP */
 			pack += salida_ip;
-			printf("FUNICONA\n\n");
+			if(protocolo == 0x11){ /* UDP */
+				salida_udp = analizar_udp(pack, &sport_filter, &dport_filter);
+				if(salida_udp == ERROR){
+					printf("Se termina su procesado.\n\n");
+				}
+			}else{ /* TCP 6 */
+				salida_tcp = analizar_tcp(pack, &sport_filter, &dport_filter);
+				if(salida_tcp == ERROR){
+					printf("Se termina su procesado.\n\n");
+				}
+			}
 		}
 	}else{
 		printf("NO ES IP. No se sigue procesando el paquete.\n\n");
@@ -294,7 +308,16 @@ int analizar_ethernet(const uint8_t *pack){
 	}
 	return ERROR; /* no es ipv4 */
 }
-
+/*
+* analiza una ip
+* param entrada: paquete, protocolo(donde se guardara si es UDP o TCP), ip_origen(filtro), ip_destino(filtro)
+* retorno: 
+*			NO_PRIMER_FRAG: no es el primer fragmento.
+*			NO_IPV4: no es una ipv4.
+*			PROT_NO_CONOCIDO: el protocolo no es UDP ni TCP.
+*			en otro caso, devuelve la longitud de la cabecera por 4 (porque el campo da un valor de 32 bits).
+*
+*/
 int analizar_ip(const uint8_t *pack, uint8_t *protocolo, uint8_t *ip_origen, uint8_t *ip_destino){
 	uint8_t version, aux, longitud_cabecera, tiempo_vida, dir_origen[IP_ALEN], dir_destino[IP_ALEN];
 	uint16_t aux_pos, posicion, longitud_total;
@@ -383,6 +406,7 @@ int analizar_ip(const uint8_t *pack, uint8_t *protocolo, uint8_t *ip_origen, uin
 	return longitud_cabecera*4;
 }
 
+/* consigue la version y la longitud IP */
 void version_longitud(uint8_t *aux, uint8_t *version, uint8_t *longitud_cabecera){
 	/* aplicamos una mascara para conseguir los 4 primeros bit donde esta la version */
 	uint8_t aux2 = ((*aux) & 0xF0) >> 4;
@@ -393,6 +417,7 @@ void version_longitud(uint8_t *aux, uint8_t *version, uint8_t *longitud_cabecera
 	memcpy(longitud_cabecera, &aux2, sizeof(uint8_t));
 }
 
+/* consigue la posicion IP */
 void posicion_ip(uint16_t * aux_pos, uint16_t *posicion){
 	/* mascara para no leer el valor que hay en flags (3 bits)*/
 	uint16_t aux2 = (*aux_pos) & 0x1FFF; 
@@ -401,7 +426,7 @@ void posicion_ip(uint16_t * aux_pos, uint16_t *posicion){
 
 }
 
-
+/* comprueba si los filtros son iguales */
 int comprobar_filtro(uint8_t *dir_origen, uint8_t *ip_origen){
 	for(int i=0; i<IP_ALEN; i++){
 		if(ip_origen[i] && ip_origen[i] != dir_origen[i]){
@@ -409,4 +434,99 @@ int comprobar_filtro(uint8_t *dir_origen, uint8_t *ip_origen){
 		}
 	}
 	return OK;
+}
+
+/*
+* analiza upd.
+* param: paquete, filtro de puerto origen, filtro de puerto destino.
+* retorno: ERROR si no coinciden los puertos y filtros dados, OK si todo va bien.
+*
+*/
+int analizar_udp(const uint8_t *pack, const uint16_t *sport_filter, const uint16_t *dport_filter){
+	uint16_t puerto_origen, puerto_destino, longitud;
+
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("Nivel 4:\n");
+
+	memcpy(&puerto_origen, pack, sizeof(uint16_t));
+	puerto_origen = ntohs(puerto_origen);
+	pack += sizeof(uint16_t);
+	printf("Puerto origen: %"PRIu16" \n", puerto_origen);
+
+	if(comprobar_puerto(&puerto_origen, sport_filter) == ERROR){
+		printf("El puerto origen proporcionado no coincide.\n");
+		printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+		return ERROR;
+	}
+
+	memcpy(&puerto_destino, pack, sizeof(uint16_t));
+	puerto_destino = ntohs(puerto_destino);
+	pack += sizeof(uint16_t);
+	printf("Puerto destino: %"PRIu16" \n", puerto_destino);
+
+	if(comprobar_puerto(&puerto_destino, dport_filter) == ERROR){
+		printf("El puerto destino proporcionado no coincide.\n");
+		printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+		return ERROR;
+	}
+
+	memcpy(&longitud, pack, sizeof(uint16_t));
+	longitud = ntohs(longitud);
+	printf("Longitud: %"PRIu16"\n", longitud);
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	return OK;
+
+}	
+
+
+int analizar_tcp(const uint8_t *pack, const uint16_t *sport_filter, const uint16_t *dport_filter){
+	uint16_t puerto_origen, puerto_destino, syn, fin, aux;
+
+
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("Nivel 4:\n");
+
+	memcpy(&puerto_origen, pack, sizeof(uint16_t));
+	puerto_origen = ntohs(puerto_origen);
+	pack += sizeof(uint16_t);
+	printf("Puerto origen: %"PRIu16"\n", puerto_origen);
+	
+	if(comprobar_puerto(&puerto_origen, sport_filter) == ERROR){
+		printf("El puerto origen proporcionado no coincide.\n");
+		printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+		return ERROR;
+	}
+
+	memcpy(&puerto_destino, pack, sizeof(uint16_t));
+	puerto_destino = ntohs(puerto_destino);
+	pack += sizeof(uint16_t);
+	printf("Puerto destino: %"PRIu16"\n", puerto_destino);
+
+	if(comprobar_puerto(&puerto_destino, dport_filter) == ERROR){
+		printf("El puerto origen proporcionado no coincide.\n");
+		printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+		return ERROR;
+	}
+	pack += sizeof(uint64_t); /* saltamos num secuencia y num acuse de recibo */
+
+	memcpy(&aux, pack, sizeof(uint16_t));
+	aux = ntohs(aux);
+	syn_fin(&aux, &syn, &fin);
+	printf("Syn: %"PRIu16"\nFin: %"PRIu16"\n", syn, fin);
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	return OK;
+}
+
+/* comprobar que el puerto proporcionado(sp) es igual al leido (po) */
+int comprobar_puerto(const uint16_t *po, const uint16_t *sp){
+	return (((*sp)!=0) && ((*po) != (*sp))) ? ERROR : OK;
+}
+
+/* consigue syn y fin de un tcp */
+void syn_fin(uint16_t *aux, uint16_t *syn, uint16_t *fin){
+	uint16_t aux2 = ((*aux) & 0x0002) >> 1;
+	memcpy(syn, &aux2, sizeof(uint16_t));
+
+	aux2 = (*aux) & 0x0001;
+	memcpy(fin, &aux2, sizeof(uint16_t));
 }
