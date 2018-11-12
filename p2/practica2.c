@@ -297,12 +297,13 @@ int analizar_ethernet(const uint8_t *pack){
 		printf("-%02X", pack[i]);
 	}
 	printf("\n");
-	printf("......................................................\n");
+	
 
 	pack += ETH_ALEN; /* sumamos para ver el tipo de protocolo */
 	memcpy(&tipo_protocolo, pack, sizeof(uint16_t));
 	tipo_protocolo = ntohs(tipo_protocolo); /* pasamos los datos de network a host */
-
+	printf("Tipo protocolo: %04x\n", tipo_protocolo);
+	printf("......................................................\n");
 	if(tipo_protocolo == es_ipv4){ /* comprobamos si es ipv4*/
 		return OK;
 	}

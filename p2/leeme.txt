@@ -1,0 +1,22 @@
+
+Practica 2 - Redes 1
+	
+	Autores: Nicolas Wolyniec y Cristina Soria
+	Grupo: 1362
+
+Observaciones:
+	Hemos intentado explicar lo que vamos haciendo paso a paso en el codigo.
+	Tambien comentamos las funciones para una mejor comprension de los pasos seguidos.
+
+Requisitos:
+1. Normativa de entrega cumplida en su totalidad: REALIZADO
+2. Varias relecturas del enunciado. REALIZADO
+3. Nivel 2: Ambas direcciones y protocolo que encapsula. REALIZADO.
+4. Nivel 2: Protocolo no esperado. Mostrar por pantalla. REALIZADO.
+5. Nivel 3: version ip, longitud de cabecera, longitud total, posicion, 
+   tiempo de vida, protocolo, ambdas direcciones. REALIZADO.
+6. Nivel 3: Comprobar si es el fragmento 0. REALIZADO.
+7. Nivel 3: si no es EDP o TCP, decirlo por pantalla. REALIZADO.
+8. Nivel 4: UDP: origen, destino, longitud. REALIZADO.
+9. Nivel 4: TCP: origen, destino, syn y fin. REALIZADO.
+10. Filtro por IP y por Puertos. REALIZADO.
